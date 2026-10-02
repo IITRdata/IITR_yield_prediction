@@ -49,17 +49,21 @@ def get_query_column_names(query: str):
 ##################### Query for Data Extraction ############################
 
 Query = """SELECT
-	ii.InvoiceNo,
-    ii.CustomerID,
-    br.ReferrerType,
+	ii.InvoiceNo invoice_num,
+    ii.CustomerID cust_id,
+    br.ReferrerType referrer_type,
     ROUND(DATEDIFF(CURRENT_DATE, c.Customer_DOB) /365) cust_age,
-    c.Gender,
+    c.Gender cust_gender,
+    lc.LicenseCategory license_type,
+    c.VehicleCategory vehicle_category,
     ((CASE WHEN ii.SettledTotal > ii.InvoiceTotal THEN ii.InvoiceTotal ELSE ii.SettledTotal END) / ii.InvoiceTotal) yield_perc
 FROM insuranceinvoice ii
 LEFT JOIN customer c USING (CustomerID)
 LEFT JOIN branchreferrer br ON c.ReferrerID = br.ReferrerID
+LEFT JOIN lookuplicensecategory lc ON lc.LicenseCategoryID = c.License_Category
 WHERE ii.SettledDate IS NOT NULL
-AND ii.SettledDate >= DATE_ADD(CURRENT_DATE, INTERVAL -12 month);
+AND ii.SettledDate >= DATE_ADD(CURRENT_DATE, INTERVAL -12 month)
+AND br.ReferrerType IS NOT NULL;
 """
 
 data = connect_and_fecth(endpoint = mysql_creds['aws_endpoint'],
@@ -72,4 +76,4 @@ data = connect_and_fecth(endpoint = mysql_creds['aws_endpoint'],
 
 df = pd.DataFrame(data=data, columns=get_query_column_names(query = Query))
 
-print(df.head())
+print(df.info())
