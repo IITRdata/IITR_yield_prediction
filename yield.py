@@ -48,7 +48,19 @@ def get_query_column_names(query: str):
 
 ##################### Query for Data Extraction ############################
 
-Query = """SELECT CustomerID,  Customer_DOB FROM customer LIMIT 1;"""
+Query = """SELECT
+	ii.InvoiceNo,
+    ii.CustomerID,
+    br.ReferrerType,
+    ROUND(DATEDIFF(CURRENT_DATE, c.Customer_DOB) /365) cust_age,
+    c.Gender,
+    ((CASE WHEN ii.SettledTotal > ii.InvoiceTotal THEN ii.InvoiceTotal ELSE ii.SettledTotal END) / ii.InvoiceTotal) yield_perc
+FROM insuranceinvoice ii
+LEFT JOIN customer c USING (CustomerID)
+LEFT JOIN branchreferrer br ON c.ReferrerID = br.ReferrerID
+WHERE ii.SettledDate IS NOT NULL
+AND ii.SettledDate >= DATE_ADD(CURRENT_DATE, INTERVAL -12 month);
+"""
 
 data = connect_and_fecth(endpoint = mysql_creds['aws_endpoint'],
                   user = mysql_creds['db_user'],
