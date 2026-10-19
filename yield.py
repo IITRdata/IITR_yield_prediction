@@ -5,6 +5,8 @@ from mysql.connector import Error
 from credentials import mysql_creds
 from sql_metadata import Parser
 import matplotlib.pyplot as plt
+from sklearn.preprocessing import OneHotEncoder
+from sklearn.model_selection import train_test_split
 
 # function definitions.
 
@@ -108,7 +110,7 @@ def format_table_attrs(dataset: pd.DataFrame):
         'naf_provided_damage_photos': np.int8,
         'referrer_type': 'category',
         'naf_vehicle_category': 'category',
-        'naf_vehicle_type': 'category',
+        'naf_vehicle_class': 'category',
         'naf_yearend_checkin': np.int8,
         'yield_perc': np.float16
     }
@@ -117,6 +119,48 @@ def format_table_attrs(dataset: pd.DataFrame):
     cleaned_df = df.astype(attr_mapping)
 
     return cleaned_df
+
+
+def encoded_df(
+        x: pd.DataFrame,
+        train_set: pd.DataFrame,
+        test_set: pd.DataFrame,
+        is_train: bool,
+        categorical_cols: list):
+
+    encoder = OneHotEncoder(drop ='first',
+                            handle_unknown = 'error',
+                            sparse_output = False,
+                            dtype = np.int8
+                        )
+    
+    all_columns = set(x.columns)
+    cat_columns = set(categorical_cols)
+    num_cols = list(all_columns.difference(cat_columns))
+
+    encoder.fit(train_set[categorical_cols]) 
+
+    # processing the training dataset.
+
+    if is_train:
+        encoded_df =  pd.DataFrame(
+            data = encoder.transform(train_set[categorical_cols]),
+            columns=encoder.get_feature_names_out(),
+            index = train_set.index)
+
+        X_train_encoded = pd.concat([train_set[num_cols], encoded_df], axis = 1)
+
+        return X_train_encoded
+    
+    else:
+        encoded_df = pd.DataFrame(
+            data = encoder.transform(test_set[categorical_cols]),
+            columns = encoder.get_feature_names_out(),
+            index = test_set.index)
+
+        X_test_encoded = pd.concat([test_set[num_cols, encoded_df]], axis = 1)
+
+        return X_test_encoded
 
 ##################### Query for Data Extraction ############################
 
@@ -131,7 +175,7 @@ Query = """SELECT
     IF(cvr.VehicleRegistrationDocument IS NOT NULL,1,0) naf_provided_rego_doc,
     IF(dp.num_photos >= 1, 1,0) naf_provided_damage_photos,
     c.VehicleCategory naf_vehicle_category,
-    ml.VehicleType naf_vehicle_type,
+    model_class. vehicle_class naf_vehicle_class,
     IF(MONTH(DATE_ADD(c.CheckoutDateTime, INTERVAL c.HireDuration DAY)) IN (12, 1),1,0) naf_yearend_checkin,
     IF(opd.OPD_InsuranceIndicator = 'Y',1,0) af_has_insurance,
     IF(opd.OPD_InsuranceClaimNo IS NOT NULL,1,0) af_provided_claim_num,
@@ -157,6 +201,25 @@ LEFT JOIN (SELECT
 LEFT JOIN customerapplicant ca ON ca.CustomerInboundID = c.CustomerInboundID
 LEFT JOIN customervehiclerepair cvr ON cvr.CustomerID = c.CustomerID
 LEFT JOIN lookupvehiclemasterlist ml ON ml.VehicleModelID = c.VehicleModelID
+LEFT JOIN (
+	SELECT
+        t1.VehicleModelID,
+        t1.daily_hire_rate,
+        CASE
+            WHEN t1.percentile <= 0.33 THEN 'Entry'
+            WHEN t1.percentile <= 0.67 THEN 'Medium'
+            ELSE 'Premium'
+        END AS vehicle_class
+    FROM (
+        SELECT
+            ml.VehicleModelID,
+            COALESCE(ml.VehicleCustomRate, vt.VehicleRateMinimum) AS daily_hire_rate,
+            PERCENT_RANK() OVER (
+                ORDER BY COALESCE(ml.VehicleCustomRate, vt.VehicleRateMinimum)
+            ) AS percentile
+        FROM lookupvehiclemasterlist ml
+        LEFT JOIN lookupvehicletype vt ON  ml.ChargeSubType = vt.ChargeSubType 
+        AND ml.VehicleType = vt.VehicleType) AS t1) AS model_class ON model_class.VehicleModelID = c.VehicleModelID
 WHERE ii.SettledDate IS NOT NULL
 AND ii.SettledDate >= DATE_ADD(CURRENT_DATE, INTERVAL -36 month)
 AND br.ReferrerType IS NOT NULL
@@ -180,6 +243,7 @@ df = pd.DataFrame(data=data, columns=main_table_col_names(query=Query))
 # Data Preprocessing
 
 cleaned_df = format_table_attrs(dataset=df)
+
 cleaned_df['naf_age_class'] = pd.cut(
     x=cleaned_df['naf_age'],
     bins=[min(cleaned_df['naf_age']), 30, 60, 80, max(cleaned_df['naf_age'])], 
@@ -194,3 +258,21 @@ cleaned_df['naf_vehicle_age_class'] = pd.cut(
     include_lowest=True
 )
 
+cleaned_df.drop(['naf_vehicle_age', 'naf_age'], axis = 1, inplace = True)
+cat_cols = [col for col in cleaned_df.columns if cleaned_df[col].dtype == 'category'] # cols for one-hot encoding
+
+# Splitting the dataset.
+
+X = cleaned_df.drop('yield_perc', axis= 1).copy()
+y = cleaned_df['yield_perc'].copy()
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = .20, random_state = 10)
+
+encoded_train_X = encoded_df(
+    x = X, 
+    train_set = X_train,
+    test_set = X_test,
+    is_train = True,
+    categorical_cols = cat_cols)
+
+print(encoded_train_X.shape)
+print(f"X_train shape: {X_train.shape}")
