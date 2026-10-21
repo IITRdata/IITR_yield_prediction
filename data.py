@@ -1,6 +1,7 @@
 from preprocessing import Preprocessor
 from credentials import mysql_creds
 import pandas as pd
+import numpy as np
 import shap
 from sklearn.ensemble import RandomForestRegressor
 from sklearn.model_selection import train_test_split
@@ -143,4 +144,11 @@ selected_predictors.append('yield_perc')
 
 # saving the filtered dataframe.
 
-cleaned_df[selected_predictors].to_csv('model_data.csv', index = False)
+rows = cleaned_df.shape[0]
+training_size = int(.80 * rows)
+
+train_df = cleaned_df[selected_predictors].iloc[:training_size, :]
+test_df = cleaned_df[selected_predictors].iloc[training_size:, :]
+
+train_df.to_csv('train.csv', index = False)
+test_df.to_csv('test.csv', index = False)
