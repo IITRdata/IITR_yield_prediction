@@ -1,17 +1,17 @@
 import pandas as pd
 import numpy as np
+import joblib
+import shap
+import regex as re
 import mysql.connector
 from mysql.connector import Error
 from credentials import mysql_creds
 from sql_metadata import Parser
-import matplotlib.pyplot as plt
 from sklearn.preprocessing import OneHotEncoder
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.ensemble import RandomForestRegressor
-from sklearn.inspection import permutation_importance
-import regex as re
-import seaborn as sns
-import shap
+from sklearn.metrics import root_mean_squared_error, mean_absolute_error
+
 
 # function definitions.
 
@@ -282,67 +282,6 @@ encoded_train_X = encoded_df(
 # Understanding predictor contribution.
 
 rf_reg= RandomForestRegressor(n_estimators = 300, random_state = 5).fit(encoded_train_X, y_train)
-mapped_importances = dict(zip( encoded_train_X, rf_reg.feature_importances_))
-
-feature_importances = {}
-
-for col in X.columns:
-    pattern = re.compile(rf"^{re.escape(col)}(_.+)?$")
-
-    if col not in cat_cols:
-        feature_importances[col] = mapped_importances[col]
-
-    else:
-        col_imp = sum([v for k, v in mapped_importances.items() if pattern.match(k)])
-        feature_importances[col] = col_imp
-
-sorted_imp_values = dict(sorted(feature_importances.items(),
-                                key = lambda item: item[1]))
-
-fig = plt.figure(figsize=(10,6))
-plt.barh(y = sorted_imp_values.keys(), 
-         width = sorted_imp_values.values(), 
-         align ='center')
-plt.xlabel("Feature Importance (%)")
-plt.title("Random Forest Feature Importance")
-plt.tight_layout()
-plt.show()
-
-# Permutation Importance
-
-results = permutation_importance(
-    rf_reg,
-    encoded_train_X, y_train,
-    n_repeats = 5,
-    random_state = 4,
-    scoring='neg_root_mean_squared_error')
-
-perm_importances = dict(zip(encoded_train_X.columns, results.importances_mean))
-
-pi_feature_scores = {}
-
-for col in X.columns:
-    pattern = re.compile(rf"^{re.escape(col)}(_.+)?$")
-
-    if col not in cat_cols:
-        pi_feature_scores[col] = perm_importances[col]
-
-    else:
-        col_imp = sum([v for k, v in perm_importances.items() if pattern.match(k)])
-        pi_feature_scores[col] = col_imp
-
-sorted_pi_values = dict(sorted(pi_feature_scores.items(),
-                                key = lambda item: item[1]))
-
-
-plt.barh(y = sorted_pi_values.keys(), 
-         width = sorted_pi_values.values(), 
-         align ='center')
-plt.xlabel("Feature Importance (%)")
-plt.title("Permutation Feature Importance")
-plt.tight_layout()
-plt.show()
-
 
 # SHAP gloabl importance.
 samples = shap.utils.sample(encoded_train_X, 1000)
