@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import regex as re
 import mysql.connector
 from mysql.connector import Error
 from sql_metadata import Parser
@@ -121,7 +122,7 @@ class Preprocessor:
 
         return cleaned_df
 
-    def encoded_df(
+    def encode_df(
         self,
         x: pd.DataFrame,
         train_set: pd.DataFrame,
@@ -163,3 +164,29 @@ class Preprocessor:
             X_test_encoded = pd.concat([test_set[num_cols, encoded_df]], axis = 1)
 
             return X_test_encoded
+
+    def key_columns(
+            self,
+            x: pd.DataFrame,
+            current_vals: dict) -> list:
+
+        combined_feature_signals = {}
+
+        for col in x.columns:
+            if x[col].dtype != 'category':
+                combined_feature_signals[col] = current_vals[col]
+            else:
+                unique_values = x[col].unique()
+                for value in unique_values:
+                    new_col_name = col + '_' + value
+                    new_col_val = current_vals.get(new_col_name, 0)
+                    if col not in combined_feature_signals:
+                        combined_feature_signals[col] = new_col_val
+                    else:
+                        combined_feature_signals[col] += new_col_val
+
+        values = np.array(list(combined_feature_signals.values()))
+        threshold = np.percentile(values,25)
+        results = [k for k, v in combined_feature_signals.items() if v > threshold]
+
+        return results
