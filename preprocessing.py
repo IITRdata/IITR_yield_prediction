@@ -9,6 +9,11 @@ from sklearn.preprocessing import OneHotEncoder
 class Preprocessor:
     def __init__(self, model_name: str):
         self.model = model_name
+        self._insurer_score_ = self._insurer_score()
+
+
+    def _insurer_score(self) -> pd.DataFrame:
+        return pd.read_csv('output.csv')
 
     def connect_and_fetch (
             sef,
@@ -117,8 +122,10 @@ class Preprocessor:
             'yield_perc': np.float16
         }
 
+        valid_mapping = {col: dtype for col, dtype in attr_mapping.items() if col in dataset.columns}
+
         df = dataset.dropna(axis=0)
-        cleaned_df = df.astype(attr_mapping)
+        cleaned_df = df.astype(valid_mapping)
 
         return cleaned_df
 
