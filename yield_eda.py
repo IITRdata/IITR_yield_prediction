@@ -65,8 +65,8 @@ def main_table_col_names(query: str):
     ['name', 'age', 'gender']
     """
 
-    col_names = get_query_column_names(Query)
-    subqueries = Parser(Query).subqueries
+    col_names = get_query_column_names(query)
+    subqueries = Parser(query).subqueries
     subquery_results = [get_query_column_names(q) for _, q in subqueries.items()]
     all_subquery_cols = []
 
@@ -171,8 +171,8 @@ def encoded_df(
 
 Query = """SELECT
     apm.region_mapping naf_region,
-    CAST(apm.resource_score AS DECIMAL(6,4)) naf_economic_score,
-    CAST(apm.education_and_occupation_score AS DECIMAL(6,4)) naf_professional_score,
+    apm.resource_score AS naf_economic_score,
+    apm.education_and_occupation_score AS naf_professional_score,
     IF(c.CustomerPriority = 'Priority', 1,0) naf_is_priority_cust,
     IF(ca.InsuranceCompany IS NOT NULL, 1,0) naf_has_insurance,
     (YEAR(CURDATE()) - c.VehicleYear) naf_vehicle_age,
@@ -380,4 +380,32 @@ plt.title("SHAP Feature Importance")
 plt.tight_layout()
 plt.show()
 
+# correlation between economic, professional and yield perc.
 
+corr_df = X[['naf_professional_score', 'naf_economic_score']]
+corr_df['yield_perc'] = y
+
+fig, axes = plt.subplots(nrows = 1,
+                        ncols = 2,
+                        figsize = (12,6),
+                        sharey = True)
+
+fig1 = sns.scatterplot(
+    corr_df, 
+    x='naf_professional_score', 
+    y='yield_perc',
+    ax = axes[0])
+fig1.set_title("Professional Score Vs Yield%")
+fig1.set_xlabel('professional scores')
+fig1.set_ylabel('Yield %')
+
+fig2 = sns.scatterplot(
+    corr_df, 
+        x='naf_economic_score', 
+        y='yield_perc',
+        ax = axes[1]
+)
+fig2.set_title('Economic Score Vs Yield %')
+fig2.set_xlabel('economic scores')
+plt.tight_layout()
+plt.show()
